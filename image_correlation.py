@@ -11,6 +11,11 @@ import tkFileDialog
 from Tkconstants import ACTIVE, BOTH, DISABLED
 from Tkinter import Button, Frame, Tk
 
+from utils import log_execution_time
+
+
+DEBUG_MODE = False
+
 
 class ImageCorrelationWindow(Tk):
 
@@ -84,44 +89,59 @@ class ImageCorrelationProcessor:
     def __init__(self, base_img_path, sub_img_path, process_now=True):
         self.base_img_path, self.sub_img_path = base_img_path, sub_img_path
 
+        self.open_images()
+
         if process_now:
             self.process_images()
 
-    def process_images(self):
+    def open_images(self):
         base_img_path, sub_img_path = self.base_img_path, self.sub_img_path
 
-        base_img = cv2.imread(base_img_path, self.IS_COLOR_IMG)
-        base_img_height = base_img.shape[self.H_POS]
-        base_img_width = base_img.shape[self.W_POS]
+        base_img = self.base_img = cv2.imread(base_img_path, self.IS_COLOR_IMG)
+        self.base_img_height = base_img.shape[self.H_POS]
+        self.base_img_width = base_img.shape[self.W_POS]
 
-        sub_img = cv2.imread(sub_img_path, self.IS_COLOR_IMG)
-        sub_img_height = sub_img.shape[self.H_POS]
-        sub_img_width = sub_img.shape[self.W_POS]
+        sub_img = self.sub_img = cv2.imread(sub_img_path, self.IS_COLOR_IMG)
+        self.sub_img_height = sub_img.shape[self.H_POS]
+        self.sub_img_width = sub_img.shape[self.W_POS]
 
-        height_delta = base_img_height - sub_img_height
-        width_delta = base_img_width - sub_img_width
+    def process_images(self):
+        correlation = self.calculate_correlation()
 
-        values = np.zeros((height_delta, width_delta))
+        left_top_point = cv2.minMaxLoc(correlation)[2]
+        bottom_right = (
+            left_top_point[0] + self.sub_img_width, left_top_point[1] + self.sub_img_height
+        )
+        cv2.rectangle(self.base_img, left_top_point, bottom_right, (255, 0, 0))
+
+        cv2.namedWindow(self.NAME, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(self.NAME, self.base_img_width, self.base_img_height)
+        cv2.imshow(self.NAME, self.base_img)
+        cv2.waitKey()
+
+    @log_execution_time(DEBUG_MODE)
+    def calculate_correlation(self):
+
+        height_delta = self.base_img_height - self.sub_img_height + 1
+        width_delta = self.base_img_width - self.sub_img_width + 1
+
+        correlation = np.zeros((height_delta, width_delta))
+
+        sub_img = self.sub_img
+        base_img = self.base_img
 
         for h in range(height_delta):
             for w in range(width_delta):
-                corr = values[h][w]
-                for i in range(sub_img_height):
-                    for j in range(sub_img_width):
+                corr = correlation[h][w]
+                for i in range(self.sub_img_height):
+                    for j in range(self.sub_img_width):
                         h_offset = h + i
                         w_offset = w + j
                         corr = corr + (sub_img[i][j] - base_img[h_offset][w_offset]) ** 2
 
-                values[h][w] = corr
+                correlation[h][w] = corr
 
-        left_top_point = cv2.minMaxLoc(values)[2]
-        bottom_right = left_top_point[0] + sub_img_width, left_top_point[1] + sub_img_height
-        cv2.rectangle(base_img, left_top_point, bottom_right, (255, 0, 0))
-
-        cv2.namedWindow(self.NAME, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(self.NAME, base_img_width, base_img_height)
-        cv2.imshow(self.NAME, base_img)
-        cv2.waitKey()
+        return correlation
 
 
 if __name__ == '__main__':
